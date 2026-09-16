@@ -21,6 +21,10 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -31,9 +35,12 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
 import java.util.Calendar
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
  * Foreground service that records the employee's position through their shift.
@@ -113,6 +120,17 @@ class TrackingService : Service() {
 
         /** How long the leaving-the-area tone sounds for. */
         private const val ALERT_SOUND_SECONDS = 5L
+
+        /**
+         * How long an outside departure must be continuously sustained before alarming or asking
+         * for a reason (2.5 minutes, in the 2-3 minute window).
+         */
+        private const val OUTSIDE_CONFIRMATION_WAIT_MS = 150_000L
+
+        /**
+         * Minimum consecutive credible outside fixes required over the wait window.
+         */
+        private const val MIN_OUTSIDE_CHECKS = 5
 
         // v2 because Android freezes a channel's importance at creation: lowering it in
         // code does nothing to a channel that already exists on the handset. A new id is
@@ -316,9 +334,137 @@ class TrackingService : Service() {
     /** True while fused updates are registered, so they get deregistered the same way. */
     @Volatile private var fusedRegistered = false
 
-    /** The fused breach watch, kept so stopWatching() can deregister it. */
     private var fusedWatchClient: com.google.android.gms.location.FusedLocationProviderClient? = null
     private var fusedWatchCallback: com.google.android.gms.location.LocationCallback? = null
+
+    /* ---------------- hardware sensor motion & spike detection ---------------- */
+
+    private var sensorManager: SensorManager? = null
+    private var accelerometer: Sensor? = null
+    private var gyroscope: Sensor? = null
+
+    @Volatile private var lastSensorMotionTime: Long = 0L
+    private var lastAccelX: Float = 0f
+    private var lastAccelY: Float = 0f
+    private var lastAccelZ: Float = 0f
+    private var hasLastAccel: Boolean = false
+
+    private var lastInsideLocation: Location? = null
+    @Volatile private var outsideFirstSeenAt = 0L
+    @Volatile private var outsideCandidateCount = 0
+
+    private val motionSensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            if (event == null) return
+            val now = SystemClock.elapsedRealtime()
+            when (event.sensor.type) {
+                Sensor.TYPE_ACCELEROMETER -> {
+                    val x = event.values[0]
+                    val y = event.values[1]
+                    val z = event.values[2]
+                    val mag = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
+                    val deltaGravity = abs(mag - SensorManager.GRAVITY_EARTH)
+
+                    var deltaJerk = 0f
+                    if (hasLastAccel) {
+                        val dx = x - lastAccelX
+                        val dy = y - lastAccelY
+                        val dz = z - lastAccelZ
+                        deltaJerk = sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
+                    }
+                    lastAccelX = x
+                    lastAccelY = y
+                    lastAccelZ = z
+                    hasLastAccel = true
+
+                    // Dynamic movement from footsteps, vehicle motion, or handling
+                    if (deltaGravity > 0.8f || deltaJerk > 1.2f) {
+                        lastSensorMotionTime = now
+                    }
+                }
+                Sensor.TYPE_GYROSCOPE -> {
+                    val wx = event.values[0]
+                    val wy = event.values[1]
+                    val wz = event.values[2]
+                    val rotRate = sqrt((wx * wx + wy * wy + wz * wz).toDouble()).toFloat()
+                    // Angular velocity > 0.4 rad/s (~23 deg/s) indicates orientation change or body turning
+                    if (rotRate > 0.4f) {
+                        lastSensorMotionTime = now
+                    }
+                }
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
+
+    private fun startMotionSensors() {
+        try {
+            if (sensorManager == null) {
+                sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+            }
+            val sm = sensorManager ?: return
+            accelerometer = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            gyroscope = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+
+            accelerometer?.let {
+                sm.registerListener(motionSensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
+            }
+            gyroscope?.let {
+                sm.registerListener(motionSensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
+            }
+            Log.i(TAG, "Hardware motion sensors registered (accel=${accelerometer != null}, gyro=${gyroscope != null})")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register motion sensors: ${e.message}")
+        }
+    }
+
+    private fun stopMotionSensors() {
+        try {
+            sensorManager?.unregisterListener(motionSensorListener)
+        } catch (e: Exception) {
+            // Nothing to unregister
+        }
+    }
+
+    /**
+     * Verifies if the phone has physically moved using GPS Doppler speed, hardware
+     * accelerometer/gyroscope events, or activity recognition.
+     */
+    private fun isDevicePhysicallyMoving(location: Location): Boolean {
+        // 1. Doppler speed from GPS
+        if (location.hasSpeed() && location.speed >= 0.8f) {
+            return true
+        }
+        // 2. Hardware motion from accelerometer or gyroscope within the last 75 seconds
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSensorMotionTime < 75_000L) {
+            return true
+        }
+        // 3. Motion coprocessor / Activity Recognition
+        if (!ActivityMonitor.isStill(this)) {
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Rejects sudden coordinate jumps (> 70m in < 20s) when the mobile sensors indicate
+     * the handset has remained physically stationary (indoor multipath reflection/drift).
+     */
+    private fun isSuddenJumpSpike(location: Location): Boolean {
+        val last = lastInsideLocation ?: return false
+        val dist = GeoFence.haversine(last.latitude, last.longitude, location.latitude, location.longitude)
+        val timeDiffSec = if (last.time > 0 && location.time >= last.time) {
+            (location.time - last.time) / 1000.0
+        } else {
+            10.0
+        }
+        if (dist > 70.0 && timeDiffSec < 20.0 && !isDevicePhysicallyMoving(location)) {
+            return true
+        }
+        return false
+    }
 
     /**
      * Fused arrivals. They go through exactly the same handleLocation path as raw
@@ -365,6 +511,7 @@ class TrackingService : Service() {
         }
 
         watchConnectivity()
+        startMotionSensors()
     }
 
     /**
@@ -1806,13 +1953,21 @@ class TrackingService : Service() {
             }
         }
         watchListener = null
+        outsideFirstSeenAt = 0L
+        outsideCandidateCount = 0
     }
 
     /**
      * Judge one watch fix against the fence and act if the state has changed.
      *
-     * Uses the same credibility rule as the server: a fix reported barely outside,
-     * by less than its own margin of error, is not evidence of anything.
+     * Enhanced Geofence Accuracy & Verification:
+     * 1. Accuracy Filter: Coarse fixes (> 40m) or fixes within the error margin of the boundary are discarded.
+     * 2. Physical Sensor Motion Check: Verifies movement via Accelerometer & Gyroscope hardware sensors.
+     * 3. Sudden Jump Spike Filter: Detects indoor multipath leaps (> 70m in < 20s) while stationary.
+     * 4. Stationary Drift Filter: Rejects near-boundary drift (< 100m) from stationary phones indoors.
+     * 5. Sustained 2 to 3 Minute Verification Window: Requires sustained outside fixes for 2.5 minutes (150s)
+     *    and at least 5 consecutive credible checks before alerting the employee or asking for a reason.
+     * 6. Instant Reset on Inside Fix: Any fix returning inside immediately cancels pending outside candidates.
      */
     private fun evaluateBreach(location: Location) {
         if (!withinShift()) return
@@ -1830,28 +1985,7 @@ class TrackingService : Service() {
             @Suppress("DEPRECATION")
             location.isFromMockProvider
         }
-        // A spoofed position must not be able to fake a crossing — but the employee's
-        // own allow_mock_location setting governs that, exactly as it does at
-        // check-in. Ignoring mock fixes unconditionally here meant that with the
-        // setting switched on for testing, check-in accepted the simulated position
-        // while the breach watch silently discarded every one of them.
-        // Simulated fixes from an unpermitted account are ignored, and this gate is
-        // back by design after a day of trying it the other way. Alarming on them
-        // produced a warning with nothing behind it — the server rightly refuses to
-        // open a trip for a spoofed point, so there was no reason prompt, no record,
-        // and no WhatsApp message, and the empty state re-armed the alarm into an
-        // endless ring. The alarm, the prompt and the message are one flow, and the
-        // flow runs on positions the system is willing to stand behind: real GPS for
-        // everyone, simulated only for accounts explicitly marked as test accounts.
         if (isMock && !Prefs.allowMockLocation(this)) {
-            // A simulated position is never trusted for the geofence verdict — its
-            // coordinates are whatever the faker chose, so alarming on "outside" would
-            // be alarming on fiction, and a cheat faking "inside" would produce no
-            // alarm at all. The spoofing itself is the reportable event, so it is the
-            // one that sounds: the employee is told plainly that their position is
-            // being simulated and attendance cannot be recorded, and the server tells
-            // the administrators. Silence here was the real hole — a cheat looked
-            // exactly like a quiet day.
             if (!mockAlerted) {
                 mockAlerted = true
                 alertMockDetected()
@@ -1877,86 +2011,95 @@ class TrackingService : Service() {
         )
         val accuracy = if (location.hasAccuracy()) location.accuracy else null
 
-        if (!verdict.inside && accuracy != null && verdict.distanceM < accuracy) {
-            // Outside by less than the fix's own error. Not actionable, and it breaks
-            // the streak so drift cannot accumulate into a false confirmation.
-            outsideStreak = 0
-            return
+        // 1. Accuracy & Sensor Drift/Jump Filtering
+        if (!verdict.inside) {
+            // Error margin check: coarse fixes (> 40m) or fixes where distance outside is within error radius
+            if (accuracy != null && (accuracy > 40.0f || verdict.distanceM < accuracy * 1.25f)) {
+                Log.d(TAG, "Outside fix rejected: coarse accuracy (±${accuracy.toInt()}m) or near boundary (${verdict.distanceM}m)")
+                return
+            }
+
+            val moving = isDevicePhysicallyMoving(location)
+
+            // Sudden Jump Filter: coordinates jumped sharply while sensors say stationary
+            if (!moving && isSuddenJumpSpike(location)) {
+                Log.d(TAG, "Outside fix rejected: sudden jump spike without physical motion")
+                return
+            }
+
+            // Stationary Phone Drift Filter: phone on a desk drifting < 100m outside
+            if (!moving && verdict.distanceM < 100.0) {
+                Log.d(TAG, "Outside fix rejected: stationary phone near boundary (${verdict.distanceM}m) without motion")
+                return
+            }
         }
 
-        // Track the run of credible outside observations, and report each one so the
-        // server can open the trip as soon as it has the confirmations it requires.
-        // Without this the only evidence reaching the server was its own recorded
-        // points, minutes apart, so the trip — and therefore the reason prompt the
-        // employee is staring at — appeared long after the alarm.
-        if (!verdict.inside) {
-            outsideStreak++
-            if (outsideStreak <= 3) {
+        // 2. User is INSIDE: Reset any pending outside candidate immediately
+        if (verdict.inside) {
+            lastInsideLocation = location
+            outsideStreak = 0
+
+            if (outsideFirstSeenAt != 0L) {
+                Log.i(TAG, "Outside candidate cancelled: phone returned inside after $outsideCandidateCount fixes before confirmation window.")
+                outsideFirstSeenAt = 0L
+                outsideCandidateCount = 0
+            }
+
+            val alreadyAnnounced = Prefs.alertedOutside(this)
+            if (alreadyAnnounced == true) {
+                // Return inside after confirmed departure
+                Prefs.setAlertedOutside(this, false)
+                clearAlert()
+                Prefs.setOutsideReasonGiven(this, false)
+                updateStatus("Back inside ${verdict.areaName ?: "your work area"}")
+                broadcastFence(false, 0, verdict.areaName ?: "your work area")
+
+                // Force this crossing into the record immediately, and push it
                 forceFix = true
                 handler.post { handleLocation(location) }
             }
-        } else {
-            outsideStreak = 0
-        }
-
-        // One outside fix is not enough to wake somebody up.
-        //
-        // The latch below only fires on a change of state, so it was never going to
-        // repeat for a person genuinely standing still outside. What it does repeat for
-        // is a verdict that flip-flops: drift puts one fix past the boundary, the alarm
-        // sounds, the next fix is back inside, and the whole cycle runs again minutes
-        // later. Every one of those is a real state change as far as the latch is
-        // concerned, which is why it felt relentless to someone who had not moved.
-        //
-        // So a departure has to be seen at least twice in a row before it is announced,
-        // matching the confirmation the server already requires before opening a trip.
-        // Returning inside is announced immediately — that is good news and stale good
-        // news is its own kind of wrong.
-        // ... unless the fix is decisively outside. The second confirmation exists to
-        // stop boundary jitter alarming someone who never moved - a few metres of GPS
-        // wobble across the line. A position hundreds of metres out is not jitter, and
-        // making it wait for a second fix is what made the alarm land late. Decisive
-        // means: past three tolerance rings, and beyond twice the fix's own error.
-        val decisivelyOutside = !verdict.inside &&
-            verdict.distanceM >= maxOf(3 * Prefs.geofenceBufferM(this), 150.0) &&
-            (accuracy == null || verdict.distanceM > accuracy * 2)
-
-        if (!verdict.inside && outsideStreak < 2 && !decisivelyOutside) {
             return
         }
 
+        // 3. User is OUTSIDE and passed accuracy/motion gates:
+        // Must sustain outside state for 2 to 3 minutes (150 seconds) and >= 5 checks before announcing!
+        outsideCandidateCount++
+        val now = SystemClock.elapsedRealtime()
+
+        if (outsideFirstSeenAt == 0L) {
+            outsideFirstSeenAt = now
+            Log.i(TAG, "Outside departure candidate detected at ${verdict.distanceM}m. Waiting 2.5 minutes and multiple checks before alerting...")
+            return
+        }
+
+        val elapsedMs = now - outsideFirstSeenAt
+        val waitRequiredMet = elapsedMs >= OUTSIDE_CONFIRMATION_WAIT_MS
+        val checksMet = outsideCandidateCount >= MIN_OUTSIDE_CHECKS
+
+        if (!waitRequiredMet || !checksMet) {
+            Log.d(TAG, "Outside departure pending: ${elapsedMs / 1000}s / ${OUTSIDE_CONFIRMATION_WAIT_MS / 1000}s, fixes: $outsideCandidateCount / $MIN_OUTSIDE_CHECKS")
+            return
+        }
+
+        // 4. Confirmed departure after 2 to 3 minutes:
+        outsideStreak = outsideCandidateCount
+
         val alreadyAnnounced = Prefs.alertedOutside(this)
-        if (alreadyAnnounced == verdict.inside.not()) {
-            return // Already announced this state.
+        if (alreadyAnnounced == true) {
+            return // Already announced this departure
         }
 
-        val firstEvaluation = alreadyAnnounced == null
-        Prefs.setAlertedOutside(this, !verdict.inside)
+        Prefs.setAlertedOutside(this, true)
+        Log.i(TAG, "Outside departure CONFIRMED after ${elapsedMs / 1000}s and $outsideCandidateCount fixes. Alerting employee and prompting for reason.")
 
-        // On the very first fix after starting, only speak up if they are already
-        // outside; silently confirming "you are inside" is noise.
-        if (firstEvaluation && verdict.inside) return
-
-        if (!verdict.inside) {
-            // Nothing left to ask once they have explained this departure. The trip
-            // stays open and keeps recording — only the notification and the demand for a
-            // reason stop, because repeating a question that has been answered is
-            // what made the warning feel broken.
-            if (!Prefs.outsideReasonGiven(this)) {
-                alertLeftArea(verdict.areaName ?: "your work area", verdict.distanceM)
-                // Ringtune alarm disabled: no audio alarm when outside the area.
-            }
-        } else {
-            clearAlert()
-            // Back inside ends this departure, so the next one asks again.
-            Prefs.setOutsideReasonGiven(this, false)
-            updateStatus("Back inside ${verdict.areaName ?: "your work area"}")
+        if (!Prefs.outsideReasonGiven(this)) {
+            alertLeftArea(verdict.areaName ?: "your work area", verdict.distanceM)
+            // Ringtune alarm disabled: no audio alarm when outside the area.
         }
 
-        broadcastFence(!verdict.inside, verdict.distanceM, verdict.areaName ?: "your work area")
+        broadcastFence(true, verdict.distanceM, verdict.areaName ?: "your work area")
 
-        // Force this crossing into the record immediately, and push it, so the
-        // admin's live map reflects it now rather than at the next interval.
+        // Force this confirmed crossing into the record immediately, and push it
         forceFix = true
         handler.post { handleLocation(location) }
     }
@@ -2299,6 +2442,7 @@ class TrackingService : Service() {
         retryRunnable?.let { handler.removeCallbacks(it) }
         retryRunnable = null
         stopWatching()
+        stopMotionSensors()
         ActivityMonitor.stop(this)
         clearAlert()
         stopAlertSound()
@@ -2339,6 +2483,9 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
+        stopMotionSensors()
+        outsideFirstSeenAt = 0L
+        outsideCandidateCount = 0
         try {
             unregisterReceiver(screenReceiver)
         } catch (e: Exception) {
