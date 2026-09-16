@@ -877,11 +877,7 @@ class TrackingService : Service() {
 
     private fun handleLocation(location: Location) {
         if (!isTrackingSessionActive()) return
-        // Off-shift fixes are discarded, with one exception: an admin has asked to see
-        // where this person is, for a window that expires by itself and is audit-logged.
-        // Routine tracking outside working hours is neither wanted nor defensible; a
-        // specific, bounded, recorded request is a different thing.
-        if (!withinShift() && Prefs.liveSeconds(this) <= 0 && !forceFix) {
+        if (!withinShift() && !forceFix) {
             return
         }
 
@@ -1014,9 +1010,8 @@ class TrackingService : Service() {
         if (forceFix) return
         if (!GeoFence.validCoords(location.latitude, location.longitude)) return
 
-        // Off shift this listener should not be running at all, but the check is cheap and
-        // the consequence of being wrong is recording someone's own time.
-        if (!withinShift() && Prefs.liveSeconds(this) <= 0) return
+        // Off shift this listener should not be running at all, and fixes are dropped.
+        if (!withinShift()) return
 
         val now = System.currentTimeMillis()
         val sinceLast = now - Prefs.lastFixAt(this)
@@ -1142,65 +1137,15 @@ class TrackingService : Service() {
     }
 
     /**
-     * One position for the personal live board, whenever route recording is quiet.
-     *
-     * Strictly separate from attendance: the fix never enters the queue, never
-     * touches shift, alarm or movement state, and is posted to live-ping instead
-     * of locations/batch — so the register, routes and worked hours cannot see
-     * it. One fix per interval; the timestamp advances only on a successful send,
-     * so an offline phone simply tries again on the next tick.
+     * Live board ping has been disabled. No location requests are made outside
+     * active shift attendance.
      */
     private fun maybeLivePing() {
-        if (Prefs.token(this) == null) return
-        if (!Prefs.liveBoardEnabled(this)) return
-        val intervalMs = Prefs.livePingIntervalMin(this) * 60_000L
-        if (System.currentTimeMillis() - Prefs.lastLivePingAt(this) < intervalMs) return
-
-        requestLivePingFix()
+        // Disabled: Live board testing feature removed. No off-shift pings.
     }
 
-    /**
-     * A single fix on its own listener, answered once and then deregistered.
-     *
-     * Deliberately not the shared locationListener: that one feeds the route
-     * pipeline, and anything it hears off shift is either discarded or — worse —
-     * mistaken for attendance. This listener's only job is one board position.
-     */
     private fun requestLivePingFix() {
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                try {
-                    locationManager.removeUpdates(this)
-                } catch (e: Exception) {
-                }
-                postLivePing(location)
-            }
-
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-            override fun onProviderEnabled(provider: String) {}
-            override fun onProviderDisabled(provider: String) {}
-        }
-
-        try {
-            for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-                if (!locationManager.allProviders.contains(provider)) continue
-                locationManager.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper())
-            }
-        } catch (e: SecurityException) {
-            // Permission revoked; the periodic registration reports it.
-            return
-        } catch (e: Exception) {
-            Log.w(TAG, "Live ping registration failed: ${e.message}")
-            return
-        }
-
-        // First fix wins; this only caps a phone with no signal holding GPS open.
-        handler.postDelayed({
-            try {
-                locationManager.removeUpdates(listener)
-            } catch (e: Exception) {
-            }
-        }, 45_000L)
+        // Disabled: No live ping fix requests.
     }
 
     /** A live-board fix goes straight to the server, never to the route queue. */
@@ -1285,11 +1230,7 @@ class TrackingService : Service() {
         val location = candidate ?: return
         candidate = null
 
-        // The same exception handleLocation makes, and it has to be made twice: a fix
-        // that is accepted on arrival and then discarded here is worse than one refused
-        // outright, because the log says the position was taken and nothing shows up.
-        // An open live window or an admin's locate request is what allows it through.
-        if (!withinShift() && Prefs.liveSeconds(this) <= 0 && !forceFix) return
+        if (!withinShift() && !forceFix) return
 
         // The accuracy ceiling, actually enforced.
         //
@@ -1682,22 +1623,9 @@ class TrackingService : Service() {
                     return
                 }
 
-                // Live board ping whenever route recording is quiet — nights, off
-                // days, before check-in. Never alongside active recording (route
-                // points already feed the board then), and never into the route
-                // pipeline: maybeLivePing posts to live-ping, not locations/batch.
-                if (!isTrackingSessionActive()) {
-                    Thread { maybeLivePing() }.start()
-                }
-
-                // Off shift the service used to shut down entirely, which meant an
-                // admin's "locate now" or "follow live" request had nothing alive to answer
-                // it — the very times someone most wants to check where a person is.
-                //
-                // It now stays alive but idle: GPS is deregistered, so the battery cost is
-                // the poll alone, and it turns the receiver back on only for an explicit,
-                // time-boxed request. Route recording is untouched and still shift-only.
-                if (!withinShift() && Prefs.liveSeconds(this@TrackingService) <= 0) {
+                // Off shift: GPS is immediately deregistered so zero location data is collected.
+                // No route recording, no geofencing, and no background pings outside working hours.
+                if (!withinShift()) {
                     Thread {
                         upload()
                         handler.post {
@@ -1705,14 +1633,13 @@ class TrackingService : Service() {
                                 releaseLocationUpdates()
                                 updateStatus("Off shift")
                             }
-                            // Kept ticking so the poll loop survives to hear a request.
+                            // Kept ticking so the poll loop resumes automatically on the next shift.
                             tickRunnable?.let { handler.postDelayed(it, tickIntervalMs()) }
                         }
                     }.start()
                     return
                 }
 
-                // A live window has opened while off shift: the receiver has to come back.
                 if (registeredIntervalMin == 0) {
                     requestUpdates()
                 }
@@ -2311,6 +2238,10 @@ class TrackingService : Service() {
      * they were requested at no longer matches what is wanted.
      */
     private fun applyLiveWindow(data: JSONObject) {
+        if (!withinShift()) {
+            Prefs.clearLive(this)
+            return
+        }
         val seconds = data.optInt("live_seconds", 0)
         val before = Prefs.liveSeconds(this)
 
