@@ -52,12 +52,6 @@ class _PermissionsGateState extends State<PermissionsGate> with WidgetsBindingOb
   /// nagging loops) or the moment everything is granted.
   bool _grantAllActive = false;
 
-  /// Guards the automatic prompt so it fires once per screen, not on every resume.
-  /// Without this, coming back from the settings page with a permission still
-  /// missing would immediately throw the user back into settings — an inescapable
-  /// loop with no way to reach the Sign out button.
-  bool _autoPrompted = false;
-
   @override
   void initState() {
     super.initState();
@@ -109,74 +103,8 @@ class _PermissionsGateState extends State<PermissionsGate> with WidgetsBindingOb
       return;
     }
 
-    // Something is missing: ask straight away rather than making the employee find
-    // and press a button. This is the first thing they see after accepting the
-    // disclosure, so the prompt arriving immediately is what they expect.
-    if (!_autoPrompted) {
-      _autoPrompted = true;
-      // Deferred to the next frame so the screen behind the dialog is painted
-      // first; a system dialog over a blank white screen looks like a crash.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _requestNext();
-      });
-    }
-  }
-
-  Future<void> _requestNext() async {
-    final state = _state;
-    if (state == null || _requesting) return;
-
-    setState(() => _requesting = true);
-
-    var granted = false;
-
-    if (!state.serviceOn) {
-      await Native.openLocationSettings();
-    } else if (!state.foreground) {
-      granted = await LocationHelper.requestForeground();
-      if (!granted && mounted) {
-        final now = await LocationHelper.state();
-        // Permanently denied: the dialog will not appear again, so the only route
-        // left is the app settings screen.
-        if (now.foregroundPermanentlyDenied) await Native.openAppSettings();
-      }
-    } else if (!state.background) {
-      // Android 11+ opens the settings page for this rather than a dialog; either
-      // way it can only be asked for once foreground location is already granted.
-      granted = await LocationHelper.requestBackground();
-      if (!granted && mounted) {
-        final now = await LocationHelper.state();
-        if (now.backgroundPermanentlyDenied) await Native.openAppSettings();
-      }
-    } else if (!state.camera) {
-      granted = await LocationHelper.requestCamera();
-      if (!granted && mounted) {
-        final now = await LocationHelper.state();
-        if (now.cameraPermanentlyDenied) await Native.openAppSettings();
-      }
-    } else if (!state.notifications) {
-      granted = await LocationHelper.requestNotifications();
-    }
-
-    if (mounted) setState(() => _requesting = false);
-
-    // Chain onto the next permission, but only when this one was actually granted.
-    // Tying the next automatic prompt to real progress is what keeps a denial from
-    // becoming a loop: deny once and the prompts stop, leaving the buttons.
-    //
-    // The background-location step is excluded on purpose — it leaves the app for
-    // the system settings page, and firing that automatically off the back of
-    // another grant feels like the app has hijacked the phone.
-    if (granted && mounted) {
-      final now = await LocationHelper.state();
-      final nextIsDialog = now.serviceOn && now.foreground && now.background &&
-          (!now.camera || !now.notifications);
-      if (nextIsDialog) {
-        _autoPrompted = false;
-      }
-    }
-
-    await _refresh();
+    // Missing permissions: allow the employee to read the explanations first.
+    // System dialogs are only triggered when the employee taps "Grant all permissions".
   }
 
   /// One tap grants everything, step by step in the order Android demands:
@@ -406,9 +334,23 @@ class _PermissionsGateState extends State<PermissionsGate> with WidgetsBindingOb
               ],
               const SizedBox(height: 18),
               Center(
-                child: TextButton(
-                  onPressed: () => widget.session.signOut(),
-                  child: const Text('Sign out'),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.privacy_tip_outlined, size: 16),
+                      label: const Text('Privacy Policy', style: TextStyle(fontSize: 12.5)),
+                      onPressed: () {
+                        final base = widget.session.baseUrl.replaceAll('/api/v1', '');
+                        Native.openUrl('$base/privacy-policy.php');
+                      },
+                    ),
+                    const Text(' • ', style: TextStyle(color: AppTheme.inkSoft)),
+                    TextButton(
+                      onPressed: () => widget.session.signOut(),
+                      child: const Text('Sign out', style: TextStyle(fontSize: 12.5)),
+                    ),
+                  ],
                 ),
               ),
             ],
