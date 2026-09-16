@@ -18,11 +18,11 @@ on:
         default: true
 
 # ──────────────────────────────────────────────
-#  ANDROID — Signed Release APK
+#  ANDROID — Signed Release APK + AAB
 # ──────────────────────────────────────────────
 jobs:
-  build-apk:
-    name: Build Signed APK
+  build-android:
+    name: Build Signed APK + AAB
     runs-on: ubuntu-latest
     if: >-
       (github.event_name == 'push') ||
@@ -65,17 +65,30 @@ jobs:
         working-directory: APK
         run: flutter build apk --release
 
-      - name: Rename APK with version
+      - name: Build release AAB (Play Store)
+        working-directory: APK
+        run: flutter build appbundle --release
+
+      - name: Rename outputs with version
         run: |
           VERSION=$(grep '^version:' APK/pubspec.yaml | sed 's/version: //')
           cp APK/build/app/outputs/flutter-apk/app-release.apk \
              APK/build/app/outputs/flutter-apk/SST-Attendance-${VERSION}.apk
+          cp APK/build/app/outputs/bundle/release/app-release.aab \
+             APK/build/app/outputs/bundle/release/SST-Attendance-${VERSION}.aab
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: SST-Attendance-APK
           path: APK/build/app/outputs/flutter-apk/SST-Attendance-*.apk
+          retention-days: 90
+
+      - name: Upload AAB artifact (Play Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SST-Attendance-AAB
+          path: APK/build/app/outputs/bundle/release/SST-Attendance-*.aab
           retention-days: 90
 
 # ──────────────────────────────────────────────
