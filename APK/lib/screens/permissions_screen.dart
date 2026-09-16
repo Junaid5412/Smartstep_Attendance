@@ -360,8 +360,10 @@ class _PermissionsGateState extends State<PermissionsGate> with WidgetsBindingOb
               const SizedBox(height: 6),
               _motionCard(),
 
-              const SizedBox(height: 6),
-              _protectionCard(),
+              if (_adminActive) ...[
+                const SizedBox(height: 6),
+                _protectionCard(),
+              ],
 
               const SizedBox(height: 20),
               FilledButton.icon(

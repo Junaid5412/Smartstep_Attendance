@@ -1,0 +1,18 @@
+# ==========================================
+# Root .gitignore for SST Attendance Mobile
+# ==========================================
+
+# Server backend files (kept locally on XAMPP / server, not on mobile GitHub repo)
+Website/
+Live/
+
+# Pre-compiled application binaries (do not commit large binaries to git)
+*.apk
+*.aab
+*.ipa
+
+# OS metadata
+.DS_Store
+Thumbs.db
+*.swp
+*~

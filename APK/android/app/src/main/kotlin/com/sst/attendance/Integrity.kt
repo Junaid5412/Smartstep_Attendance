@@ -51,7 +51,20 @@ object Integrity {
         val signature = certificateSha256(context)
             ?: return Result(false, "The app signature could not be read.")
 
-        if (!signature.equals(RELEASE_CERT_SHA256, ignoreCase = true)) {
+        val matchesDirectCert = signature.equals(RELEASE_CERT_SHA256, ignoreCase = true)
+        val isPlayInstall = try {
+            val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getInstallerPackageName(context.packageName)
+            }
+            installer == "com.android.vending" || installer == "com.google.android.feedback"
+        } catch (_: Exception) {
+            false
+        }
+
+        if (!matchesDirectCert && !isPlayInstall) {
             return Result(false, "This copy of the app has been modified or re-signed.")
         }
 

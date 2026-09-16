@@ -38,11 +38,8 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="true" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />
 
-        <!-- In-app updates. The app is sideloaded, so there is no store to do this; it
-         downloads the new APK and hands it to the system installer. Android still
-         requires the employee to confirm - silent install needs device-owner
-         provisioning through MDM, which is a different undertaking. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+        <!-- Self-updating APK permission removed for Google Play Store compliance.
+             Google Play manages app updates directly through the Play Store. -->
 
     <application
         android:label="SST Attendance"
@@ -103,9 +100,10 @@
             </intent-filter>
         </receiver>
 
-        <!-- Device administrator. Active, it blocks the Uninstall button; it requests no
-             policy powers (see res/xml/device_admin.xml). BIND_DEVICE_ADMIN must be the
-             receiver's permission or Android ignores the registration entirely. -->
+        <!-- Device administrator receiver commented out for Google Play Store compliance.
+             Google Play strictly limits Device Admin to dedicated EMM/MDM apps and prohibits
+             using Device Admin to prevent uninstallation in consumer/Play Store releases.
+             (Uncomment only for dedicated private enterprise / MDM sideloaded builds).
         <receiver
             android:name=".AttendanceDeviceAdmin"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
@@ -118,6 +116,7 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
             </intent-filter>
         </receiver>
+        -->
 
         <meta-data
             android:name="flutterEmbedding"

@@ -309,6 +309,15 @@ class Native {
       // Ignored.
     }
   }
+
+  /// Opens an external URL in the system browser.
+  static Future<bool> openUrl(String url) async {
+    try {
+      return await _channel.invokeMethod<bool>('openUrl', {'url': url}) ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
 }
 
 /// What the native service reports about itself.
