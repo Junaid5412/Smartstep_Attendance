@@ -1,0 +1,1 @@
+ALTER TABLE att_employees ADD COLUMN initial_password_cipher VARCHAR(512) DEFAULT NULL COMMENT 'Encrypted generated credential for admin reference' AFTER password;

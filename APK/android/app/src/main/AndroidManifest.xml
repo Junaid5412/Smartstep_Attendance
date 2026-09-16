@@ -1,0 +1,146 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Coarse is declared alongside fine because Android 12+ lets the user grant
+         only approximate location; the app detects that and asks again. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- The "Allow all the time" grant. Android 11+ will not show this in the same
+         dialog as foreground location: it must be requested separately, after
+         foreground location has already been granted. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required from Android 14 (API 34): a foreground service must declare its
+         type, and location services must hold the matching permission. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Whether the phone is moving, read from the accelerometer instead of guessed at from
+         coordinates. Runtime permission from Android 10; the Play Services variant covers
+         older versions, where it is granted at install. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Lets the app send the user to the battery-optimisation exemption screen.
+         Without the exemption, aggressive OEM power managers (Xiaomi, Oppo, Vivo,
+         Samsung) will kill the tracking service and leave gaps in the route. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature android:name="android.hardware.location.gps" android:required="true" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+
+        <!-- In-app updates. The app is sideloaded, so there is no store to do this; it
+         downloads the new APK and hands it to the system installer. Android still
+         requires the employee to confirm - silent install needs device-owner
+         provisioning through MDM, which is a different undertaking. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application
+        android:label="SST Attendance"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:enableOnBackInvokedCallback="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The tracking service. foregroundServiceType=location is what allows it
+             to keep receiving GPS while the app is not on screen. -->
+        <service
+            android:name=".TrackingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
+
+        <!-- Restarts tracking after a reboot, so an employee who restarts their
+             phone mid-shift does not silently stop being tracked. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Receives activity transitions (STILL / walking / in vehicle). Not exported: only
+             Play Services delivers to it, via a PendingIntent this app created. -->
+        <receiver
+            android:name=".ActivityMonitor$ActivityReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.sst.attendance.ACTIVITY_TRANSITION" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Device administrator. Active, it blocks the Uninstall button; it requests no
+             policy powers (see res/xml/device_admin.xml). BIND_DEVICE_ADMIN must be the
+             receiver's permission or Android ignores the registration entirely. -->
+        <receiver
+            android:name=".AttendanceDeviceAdmin"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
+            </intent-filter>
+        </receiver>
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+        <!-- Android 7+ refuses a file:// URI in an install intent, so the downloaded
+             APK is handed over as a content:// URI through this provider. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+</manifest>

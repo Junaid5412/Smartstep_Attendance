@@ -1,0 +1,3 @@
+# Endpoint files are included by ../index.php after it bootstraps the environment.
+# A direct request would hit undefined functions, so refuse it outright.
+Require all denied

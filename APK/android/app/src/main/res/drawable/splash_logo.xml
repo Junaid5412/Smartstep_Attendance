@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Location pin with a tick, drawn as a vector so it stays crisp at any density
+     and needs no per-density PNGs. The company logo cannot be used here: the
+     system splash is rendered before any app code runs, so it must be a static
+     resource. The configurable logo appears on the loading screen that follows. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,22c-11.6,0 -21,9.4 -21,21c0,15.7 21,37 21,37s21,-21.3 21,-37C75,31.4 65.6,22 54,22z" />
+    <path
+        android:fillColor="#1F4FD8"
+        android:pathData="M51.4,53.6l-7.2,-7.2l3.5,-3.5l3.7,3.7l11.1,-11.1l3.5,3.5L51.4,53.6z" />
+</vector>

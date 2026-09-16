@@ -1,0 +1,14 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    avoid_print: true
+    unawaited_futures: true
+    always_declare_return_types: true
+
+analyzer:
+  errors:
+    # A missing await on a fire-and-forget native call is a real bug in a tracking
+    # app, so it is escalated from a hint to an error.
+    unawaited_futures: error

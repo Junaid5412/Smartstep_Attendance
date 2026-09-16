@@ -1,0 +1,66 @@
+name: sst_attendance
+description: SST Attendance — geofenced check-in/out with photo verification and working-hours route tracking.
+publish_to: none
+
+# The build number is what the server's min_app_version gate compares against.
+version: 1.0.4+5
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Networking
+  http: ^1.2.0
+
+  # Location. geolocator exposes Position.isMocked, which is how the app detects
+  # a fake-GPS app without needing its own native check.
+  geolocator: ^12.0.0
+
+  # Runtime permissions, including the two-step background-location grant.
+  permission_handler: ^11.3.0
+
+  # Camera-only capture for the compulsory selfie. image_picker with
+  # ImageSource.camera cannot be redirected to the gallery by the user.
+  image_picker: ^1.1.0
+  image: ^4.2.0
+
+  # Maps: OpenStreetMap raster tiles, no Google dependency.
+  flutter_map: ^7.0.0
+  # Offline maps: a Protomaps PMTiles archive rendered on-device.
+  # Vector rather than raster so a 13 MB file covers the whole country and still
+  # draws sharp when zoomed past the archive's maximum zoom.
+  vector_map_tiles: ^8.0.0
+  vector_map_tiles_pmtiles: ^1.5.0
+  # 1.x, not 2.x: vector_map_tiles_pmtiles requires ^1.2.0, and pmtiles 2.x pulls a
+  # latlong2 newer than flutter_map 7 permits.
+  pmtiles: ^1.2.0
+  # Used directly for the map style; a transitive dependency is not one to import.
+  vector_tile_renderer: ^5.2.1
+  latlong2: ^0.9.0
+
+  # App version shown at sign-in; device identity itself is native (DeviceIdentity.kt).
+  package_info_plus: ^8.0.0
+
+  # The token must not sit in plain SharedPreferences.
+  flutter_secure_storage: ^9.2.0
+  shared_preferences: ^2.2.0
+
+  # Offline queue for check-ins taken with no signal.
+  sqflite: ^2.3.0
+  path: ^1.9.0
+  path_provider: ^2.1.0
+
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

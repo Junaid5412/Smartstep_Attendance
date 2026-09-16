@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Paths the FileProvider may hand out.
+
+    Scoped to the single folder downloaded updates land in, rather than the whole of
+    external storage: a provider that can share anything is a way for other apps to read
+    files this one holds, and the only thing that needs sharing is the APK being installed.
+-->
+<paths>
+    <external-files-path name="updates" path="updates/" />
+</paths>

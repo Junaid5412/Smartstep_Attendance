@@ -1,0 +1,21 @@
+# Attendance photos are user-supplied files. Serve them as static images only:
+# never let the server execute anything found in here, whatever its extension.
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .cgi .pl .py
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phps
+
+# Only image responses are ever legitimate from this directory.
+<FilesMatch "\.(?!jpe?g$|png$|webp$|gif$)[^.]*$">
+    Require all denied
+</FilesMatch>
+
+Options -Indexes -ExecCGI

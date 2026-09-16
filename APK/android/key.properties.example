@@ -1,0 +1,8 @@
+# Copy to android/key.properties and fill in. Never commit the real file.
+# Generate a keystore with:
+#   keytool -genkey -v -keystore sst-attendance.jks -keyalg RSA \
+#           -keysize 2048 -validity 10000 -alias sst
+storePassword=your-store-password
+keyPassword=your-key-password
+keyAlias=sst
+storeFile=../sst-attendance.jks

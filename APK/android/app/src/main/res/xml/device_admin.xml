@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately empty of policies.
+
+  Being an active device admin is what blocks uninstall; none of the policy powers
+  (password rules, remote wipe, camera lock) are needed for that, and an attendance app
+  requesting them would be claiming authority over the handset it has no use for.
+  Android accepts an admin that declares nothing.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android"
+              android:visible="true">
+    <uses-policies />
+</device-admin>

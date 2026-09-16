@@ -1,0 +1,21 @@
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+android/local.properties
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# Release signing material must never be committed.
+android/key.properties
+*.jks
+*.keystore
+
+*.iml
+.idea/
+.vscode/

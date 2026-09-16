@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand blue, matching AppTheme.brand on the Dart side. -->
+    <color name="brand">#1F4FD8</color>
+    <color name="brand_dark">#163BA6</color>
+</resources>
