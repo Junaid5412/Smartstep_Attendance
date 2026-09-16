@@ -5,55 +5,43 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import java.security.MessageDigest
-import java.util.UUID
 
 /**
  * The persistent device fingerprint behind the one-device login rule.
  *
- * The requirement is an identifier that does not change on its own, because every
- * change forces an admin to reset the binding. Android gives no perfect answer, so
- * this composes two imperfect ones:
+ * Uses a fixed, deterministic hardware fingerprint composed of the hardware
+ * attributes and Settings.Secure.ANDROID_ID (SSAID).
  *
- *  - SSAID (Settings.Secure.ANDROID_ID). Since Android 8 this is scoped to the app
- *    signing key and the user, and it survives app reinstall and cache clearing.
- *    It changes on factory reset — which is the behaviour we want, since a factory
- *    reset is a genuinely different device state.
- *  - A UUID minted on first run and kept in encrypted preferences. This covers the
- *    handful of devices that report a null or duplicated SSAID (some cheap tablets
- *    ship with the same value flashed across a batch).
- *
- * The two are hashed together, so neither is transmitted in the clear, and the
- * result is stable for the life of the installation.
- *
- * Known limit worth being honest about: clearing app data drops the stored UUID, so
- * the composite changes and the employee needs an admin reset. That is the
- * conservative failure direction — it refuses a login rather than allowing a device
- * swap — but it does mean "clear data" is not a self-service fix. Google Play
- * Services Block Store would survive that too, and is the natural next step if
- * resets become a support burden.
+ * This identifier does NOT change upon uninstalling and reinstalling the app on
+ * the same physical phone. It binds strictly to the handset, preventing account
+ * sharing across different phones while allowing seamless re-installation on
+ * the same device without triggering "DEVICE_ALREADY_BOUND".
  */
 object DeviceIdentity {
 
     @SuppressLint("HardwareIds")
     fun uid(context: Context): String {
-        Prefs.deviceUid(context)?.let { return it }
-
         val ssaid = try {
-            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+                ?.trim()
+                ?.lowercase() ?: ""
         } catch (e: Exception) {
             ""
         }
 
-        val installUuid = Prefs.installUuid(context) ?: UUID.randomUUID().toString().also {
-            Prefs.setInstallUuid(context, it)
-        }
+        // Fixed, deterministic hardware fingerprint:
+        // No random UUIDs so it remains consistent across app uninstall and reinstall on the same device.
+        val material = listOf(
+            ssaid.ifEmpty { "no_ssaid" },
+            (Build.MANUFACTURER ?: "").trim().lowercase(),
+            (Build.BRAND ?: "").trim().lowercase(),
+            (Build.MODEL ?: "").trim().lowercase(),
+            (Build.DEVICE ?: "").trim().lowercase(),
+            (Build.BOARD ?: "").trim().lowercase(),
+            (Build.HARDWARE ?: "").trim().lowercase()
+        ).joinToString("|")
 
-        // The model is folded in as a weak tie-break for batches of devices that
-        // share a flashed SSAID; it never changes for a given handset.
-        val material = listOf(ssaid, installUuid, Build.MODEL ?: "", Build.MANUFACTURER ?: "")
-            .joinToString("|")
-
-        val uid = sha256(material)
+        val uid = sha256("sst_fixed_device|$material")
         Prefs.setDeviceUid(context, uid)
         return uid
     }

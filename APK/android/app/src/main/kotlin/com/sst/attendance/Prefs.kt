@@ -268,8 +268,8 @@ object Prefs {
     }
 
     fun alertSound(context: Context): Boolean {
-        val settings = config(context).optJSONObject("settings") ?: return true
-        return settings.optBoolean("alert_sound", true)
+        // Disabled: no alarm sound or ringtune when outside the area
+        return false
     }
 
     fun commandPollSeconds(context: Context): Int {

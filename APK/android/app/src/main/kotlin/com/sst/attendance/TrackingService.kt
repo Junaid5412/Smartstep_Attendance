@@ -1939,12 +1939,12 @@ class TrackingService : Service() {
 
         if (!verdict.inside) {
             // Nothing left to ask once they have explained this departure. The trip
-            // stays open and keeps recording — only the alarm and the demand for a
+            // stays open and keeps recording — only the notification and the demand for a
             // reason stop, because repeating a question that has been answered is
             // what made the warning feel broken.
             if (!Prefs.outsideReasonGiven(this)) {
                 alertLeftArea(verdict.areaName ?: "your work area", verdict.distanceM)
-                playAlertSound()
+                // Ringtune alarm disabled: no audio alarm when outside the area.
             }
         } else {
             clearAlert()
@@ -1984,10 +1984,11 @@ class TrackingService : Service() {
         val channel = NotificationChannel(
             ALERT_CHANNEL_ID,
             "Leaving your work area",
-            NotificationManager.IMPORTANCE_HIGH
+            NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Warns you the moment you leave your assigned work area."
-            enableVibration(true)
+            description = "Informs you when leaving your assigned work area."
+            setSound(null, null)
+            enableVibration(false)
             setShowBadge(true)
         }
         manager.createNotificationChannel(channel)
@@ -2006,7 +2007,7 @@ class TrackingService : Service() {
             Notification.Builder(this, ALERT_CHANNEL_ID)
         } else {
             @Suppress("DEPRECATION")
-            Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
+            Notification.Builder(this).setPriority(Notification.PRIORITY_DEFAULT)
         }
 
         builder
@@ -2021,11 +2022,6 @@ class TrackingService : Service() {
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentIntent(open)
             .setAutoCancel(true)
-
-        if (Prefs.alertSound(this)) {
-            @Suppress("DEPRECATION")
-            builder.setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
-        }
 
         try {
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
@@ -2083,63 +2079,11 @@ class TrackingService : Service() {
     }
 
     /**
-     * Sound the alarm for a few seconds when the employee leaves the area.
-     *
-     * A notification's own sound is a single short chime that is easy to miss in a
-     * pocket or a vehicle. This plays deliberately for [ALERT_SOUND_SECONDS] on the
-     * alarm stream, which is loud enough to notice and is not silenced by the ringer
-     * being down, then stops itself — a looping alert with no stop condition would be
-     * indistinguishable from a fault.
+     * Alarm sound disabled per user requirement: no ringtone or audible alarm
+     * when an employee moves outside the geofenced area.
      */
     private fun playAlertSound() {
-        if (!Prefs.alertSound(this)) return
-
         stopAlertSound()
-
-        try {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                ?: Settings.System.DEFAULT_NOTIFICATION_URI
-                ?: return
-
-            val player = MediaPlayer()
-            player.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            player.setDataSource(this, uri)
-            player.isLooping = true
-            player.setOnPreparedListener { it.start() }
-            player.prepareAsync()
-            alertPlayer = player
-
-            // Hard stop, so a stuck prepare or an unusually long tone cannot leave it
-            // sounding indefinitely.
-            handler.postDelayed({ stopAlertSound() }, ALERT_SOUND_SECONDS * 1000L)
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not play the area alert: ${e.message}")
-            stopAlertSound()
-        }
-
-        // Vibration alongside the tone, for a phone that is on silent.
-        try {
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
-            } else {
-                @Suppress("DEPRECATION")
-                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            }
-            val pattern = longArrayOf(0, 500, 300, 500, 300, 500)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(pattern, -1)
-            }
-        } catch (e: Exception) {
-            // Not all devices have a vibrator, and none of this is essential.
-        }
     }
 
     private fun stopAlertSound() {
