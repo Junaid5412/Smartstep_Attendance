@@ -96,7 +96,7 @@
             android:name=".ActivityMonitor$ActivityReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.sst.attendance.ACTIVITY_TRANSITION" />
+                <action android:name="com.smartstep.attendance.ACTIVITY_TRANSITION" />
             </intent-filter>
         </receiver>
 

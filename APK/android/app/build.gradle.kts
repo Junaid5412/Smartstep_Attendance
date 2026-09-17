@@ -17,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.sst.attendance"
+    namespace = "com.smartstep.attendance"
     // 36 is what this machine's SDK provides (Android 16), and Play requires a
     // recent target anyway.
     compileSdk = 36
@@ -29,7 +29,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.sst.attendance"
+        applicationId = "com.smartstep.attendance"
         // 24 rather than the Flutter default: EncryptedSharedPreferences and the
         // service APIs used are comfortable at 24, and it covers old field handsets.
         minSdk = 24

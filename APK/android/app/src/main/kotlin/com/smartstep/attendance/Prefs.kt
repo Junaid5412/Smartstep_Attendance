@@ -1,4 +1,4 @@
-package com.sst.attendance
+package com.smartstep.attendance
 
 import android.content.Context
 import android.content.SharedPreferences

@@ -1,4 +1,4 @@
-package com.sst.attendance
+package com.smartstep.attendance
 
 import org.json.JSONArray
 import org.json.JSONObject

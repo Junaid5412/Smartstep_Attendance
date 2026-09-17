@@ -19,8 +19,8 @@ class FenceEvent {
 }
 
 class Native {
-  static const MethodChannel _channel = MethodChannel('com.sst.attendance/native');
-  static const EventChannel _events = EventChannel('com.sst.attendance/events');
+  static const MethodChannel _channel = MethodChannel('com.smartstep.attendance/native');
+  static const EventChannel _events = EventChannel('com.smartstep.attendance/events');
 
   /// Crossings as the service detects them.
   ///

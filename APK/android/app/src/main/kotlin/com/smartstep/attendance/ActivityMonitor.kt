@@ -1,4 +1,4 @@
-package com.sst.attendance
+package com.smartstep.attendance
 
 import android.Manifest
 import android.app.PendingIntent
@@ -122,7 +122,7 @@ object ActivityMonitor {
         Prefs.clearActivity(context)
     }
 
-    const val ACTION = "com.sst.attendance.ACTIVITY_TRANSITION"
+    const val ACTION = "com.smartstep.attendance.ACTIVITY_TRANSITION"
 
     /**
      * Receives the transitions and records the one fact the tracker needs.

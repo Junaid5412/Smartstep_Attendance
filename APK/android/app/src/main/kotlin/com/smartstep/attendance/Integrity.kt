@@ -1,4 +1,4 @@
-package com.sst.attendance
+package com.smartstep.attendance
 
 import android.content.Context
 import android.content.pm.PackageManager
@@ -37,7 +37,7 @@ object Integrity {
     private const val RELEASE_CERT_SHA256 =
         "e02f484fb4fc02d6d1fa5c4c9d36ad58d8b3059c46c0612db3d4b4df86b93f1c"
 
-    private const val EXPECTED_PACKAGE = "com.sst.attendance"
+    private const val EXPECTED_PACKAGE = "com.smartstep.attendance"
 
     /** A failed check, with something specific enough to act on. */
     data class Result(val ok: Boolean, val reason: String? = null)

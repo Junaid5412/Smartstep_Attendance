@@ -1,4 +1,4 @@
-package com.sst.attendance
+package com.smartstep.attendance
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -60,18 +60,18 @@ class TrackingService : Service() {
     companion object {
         private const val TAG = "SSTTracking"
 
-        const val ACTION_START = "com.sst.attendance.START"
-        const val ACTION_STOP = "com.sst.attendance.STOP"
-        const val ACTION_SYNC_NOW = "com.sst.attendance.SYNC_NOW"
+        const val ACTION_START = "com.smartstep.attendance.START"
+        const val ACTION_STOP = "com.smartstep.attendance.STOP"
+        const val ACTION_SYNC_NOW = "com.smartstep.attendance.SYNC_NOW"
 
         /** Broadcast the UI listens to so it can show live status. */
-        const val BROADCAST_STATUS = "com.sst.attendance.STATUS"
+        const val BROADCAST_STATUS = "com.smartstep.attendance.STATUS"
 
         /**
          * Fired the moment a fence crossing is detected, so the UI can warn the
          * employee and ask for a reason without waiting for its own poll.
          */
-        const val BROADCAST_FENCE = "com.sst.attendance.FENCE"
+        const val BROADCAST_FENCE = "com.smartstep.attendance.FENCE"
 
         private const val ALERT_CHANNEL_ID = "sst_alerts"
         private const val ALERT_NOTIFICATION_ID = 4712

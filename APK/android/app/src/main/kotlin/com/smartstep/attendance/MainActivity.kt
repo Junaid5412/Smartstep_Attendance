@@ -1,4 +1,4 @@
-package com.sst.attendance
+package com.smartstep.attendance
 
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
@@ -60,8 +60,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private companion object {
-        const val CHANNEL = "com.sst.attendance/native"
-        const val EVENTS = "com.sst.attendance/events"
+        const val CHANNEL = "com.smartstep.attendance/native"
+        const val EVENTS = "com.smartstep.attendance/events"
     }
 
     private var eventSink: EventChannel.EventSink? = null
