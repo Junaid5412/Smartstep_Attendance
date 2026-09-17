@@ -256,9 +256,9 @@ class _PermissionsGateState extends State<PermissionsGate> with WidgetsBindingOb
                 granted: state.background,
                 icon: Icons.all_inclusive,
                 title: 'Location "Allow all the time"',
-                body: 'Needed to record your route through the shift. Choose '
-                    '"Allow all the time" on the settings screen — "While using the app" '
-                    'is not enough.',
+                body: 'This app collects location data to record your route through the shift, '
+                    'even when the app is closed or not in use. Choose '
+                    '"Allow all the time" on the settings screen.',
                 blocked: state.backgroundPermanentlyDenied,
               ),
               _row(
