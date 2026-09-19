@@ -442,6 +442,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         // a button, which is a worse experience than silence.
                         _todayCard(),
                         _actionButton(),
+                        const SizedBox(height: 20),
+                        _footerLinks(session),
                       ]),
                     ),
                   ),
@@ -480,13 +482,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
         ),
-        // No sign-out button, deliberately.
-        //
-        // Signing out stops tracking and leaves the day half-recorded, and an employee
-        // has no use for it: the device is bound to their account, so there is nobody
-        // else who could sign in on this phone. Releasing a device is an administrator's
-        // action, from the panel. _confirmSignOut is kept for that path and for a
-        // session the server has already killed.
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.white),
+          tooltip: 'Options',
+          onSelected: (value) {
+            final base = session.baseUrl.replaceAll('/api/v1', '');
+            if (value == 'privacy') {
+              Native.openUrl('$base/privacy-policy.php');
+            } else if (value == 'deletion') {
+              Native.openUrl('$base/data-deletion.php');
+            }
+          },
+          itemBuilder: (_) => [
+            const PopupMenuItem(
+              value: 'privacy',
+              child: Row(
+                children: [
+                  Icon(Icons.privacy_tip_outlined, size: 20, color: AppTheme.ink),
+                  SizedBox(width: 10),
+                  Text('Privacy Policy'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'deletion',
+              child: Row(
+                children: [
+                  Icon(Icons.delete_outline, size: 20, color: AppTheme.ink),
+                  SizedBox(width: 10),
+                  Text('Data Deletion'),
+                ],
+              ),
+            ),
+          ],
+        ),
         const SizedBox(width: 4),
       ],
       // Collapses to just the company name, so the pinned bar stays usable.
@@ -1439,6 +1468,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _footerLinks(Session session) {
+    return Center(
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        children: [
+          InkWell(
+            onTap: () {
+              final base = session.baseUrl.replaceAll('/api/v1', '');
+              Native.openUrl('$base/privacy-policy.php');
+            },
+            child: const Text(
+              'Privacy Policy',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppTheme.brand,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+          const Text('•', style: TextStyle(fontSize: 12, color: AppTheme.inkSoft)),
+          InkWell(
+            onTap: () {
+              final base = session.baseUrl.replaceAll('/api/v1', '');
+              Native.openUrl('$base/data-deletion.php');
+            },
+            child: const Text(
+              'Data Deletion',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppTheme.inkSoft,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _openReason(int eventId, [String? summary]) async {
     final submitted = await Navigator.of(context).push<bool>(

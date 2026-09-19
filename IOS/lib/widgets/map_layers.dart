@@ -137,7 +137,7 @@ class _BaseMapLayerState extends State<BaseMapLayer> {
 
     return TileLayer(
       urlTemplate: widget.fallbackUrl,
-      userAgentPackageName: 'com.sst.attendance',
+      userAgentPackageName: 'com.smartstep.attendance',
       maxZoom: 19,
     );
   }

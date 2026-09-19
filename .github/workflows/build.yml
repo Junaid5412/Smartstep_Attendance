@@ -5,7 +5,6 @@ on:
     branches: [ main ]
     paths:
       - 'APK/**'
-      - 'IOS/**'
   workflow_dispatch:
     inputs:
       build_apk:
@@ -112,15 +111,15 @@ jobs:
           channel: 'stable'
 
       - name: Get dependencies
-        working-directory: IOS
+        working-directory: APK
         run: flutter pub get
 
       - name: Build iOS (unsigned)
-        working-directory: IOS
+        working-directory: APK
         run: flutter build ios --release --no-codesign
 
       - name: Package as IPA
-        working-directory: IOS
+        working-directory: APK
         run: |
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
@@ -131,5 +130,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SST-Attendance-IOS
-          path: IOS/SST-Attendance-*.ipa
+          path: APK/SST-Attendance-*.ipa
           retention-days: 90

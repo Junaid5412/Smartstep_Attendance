@@ -229,9 +229,29 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: GestureDetector(
                         onLongPress: _busy ? null : _editServer,
                         child: Text(
-                        'Version $_appVersion',
-                        style: const TextStyle(color: AppTheme.inkSoft, fontSize: 12),
+                          'Version $_appVersion',
+                          style: const TextStyle(color: AppTheme.inkSoft, fontSize: 12),
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: TextButton(
+                        onPressed: () {
+                          final base = widget.session.baseUrl.replaceAll('/api/v1', '');
+                          Native.openUrl('$base/privacy-policy.php');
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.inkSoft,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        child: const Text(
+                          'Privacy Policy',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
                       ),
                     ),
                   ],

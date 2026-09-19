@@ -19,8 +19,8 @@ class FenceEvent {
 }
 
 class Native {
-  static const MethodChannel _channel = MethodChannel('com.sst.attendance/native');
-  static const EventChannel _events = EventChannel('com.sst.attendance/events');
+  static const MethodChannel _channel = MethodChannel('com.smartstep.attendance/native');
+  static const EventChannel _events = EventChannel('com.smartstep.attendance/events');
 
   /// Crossings as the service detects them.
   ///
@@ -307,6 +307,15 @@ class Native {
       await _channel.invokeMethod('openNotificationSettings');
     } on PlatformException {
       // Ignored.
+    }
+  }
+
+  /// Opens an external URL in the system browser.
+  static Future<bool> openUrl(String url) async {
+    try {
+      return await _channel.invokeMethod<bool>('openUrl', {'url': url}) ?? false;
+    } on PlatformException {
+      return false;
     }
   }
 }

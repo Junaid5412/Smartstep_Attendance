@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../core/api.dart';
+import '../core/native.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 
@@ -81,7 +82,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _month.month == DateTime.now().month;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My attendance')),
+      appBar: AppBar(
+        title: const Text('My attendance'),
+        actions: [
+          IconButton(
+            tooltip: 'Privacy Policy',
+            icon: const Icon(Icons.privacy_tip_outlined),
+            onPressed: () {
+              final base = widget.session.baseUrl.replaceAll('/api/v1', '');
+              Native.openUrl('$base/privacy-policy.php');
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Container(

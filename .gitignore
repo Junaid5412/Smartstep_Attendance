@@ -16,3 +16,9 @@ Live/
 Thumbs.db
 *.swp
 *~
+
+# Play Store Assets
+playstore_feature_graphic.jpg
+playstore_icon.jpg
+screenshot/
+screenshots/
