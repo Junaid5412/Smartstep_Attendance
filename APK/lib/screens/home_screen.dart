@@ -38,6 +38,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Map<String, dynamic>> _recentDecisions = [];
   TrackingStatus _tracking = const TrackingStatus();
 
+  /// Whether the admin wants a reason for leaving the work area (Settings > "Ask
+  /// employees for a reason"). Off, every prompt, button and card asking for one is
+  /// hidden; the employee is still told they are outside.
+  bool get _askReason => widget.session.askOutsideReason;
+
   /// The consent screen promises a visible indicator while tracking runs, so this
   /// being false is a broken promise, not a cosmetic detail.
   bool _notificationsBlocked = false;
@@ -174,8 +179,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           backgroundColor: AppTheme.bad,
           duration: const Duration(seconds: 8),
           content: Text(
-            'You have left ${event.areaName} — ${event.distanceM} m outside. '
-            'Please record a reason.',
+            'You have left ${event.areaName} — ${event.distanceM} m outside.'
+            '${_askReason ? ' Please record a reason.' : ''}',
           ),
         ),
       );
@@ -270,6 +275,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final data = result.map;
 
+    // Learned from /me as well as /app-config: /me is the 15-second poll, so a change
+    // in Settings reaches the screen without waiting for the next config refresh.
+    if (data['ask_outside_reason'] is bool) {
+      await widget.session.setAskOutsideReason(data['ask_outside_reason'] as bool);
+      if (!mounted) return;
+    }
+
     // Kept for the next cold start with no signal.
     unawaited(widget.session.rememberMe(data));
 
@@ -320,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// makes the reason get recorded near the time it happened, rather than being
   /// reconstructed days later when an admin chases it.
   Future<void> _maybePromptForReason() async {
-    if (_promptOpen) return;
+    if (_promptOpen || !_askReason) return;
 
     final outside = _currentlyOutside;
     if (outside == null) return;
@@ -435,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         // Pending work only. Decided trips live in Notifications:
                         // a dashboard that also lists settled history buries the one
                         // item the employee still has to act on.
-                        if (_reasonsPending.isNotEmpty) _pendingReasonsCard(),
+                        if (_askReason && _reasonsPending.isNotEmpty) _pendingReasonsCard(),
                         // No pending-points row and no manual Upload. Retrying is the
                         // app's job: it uploads the moment a connection exists. Showing a
                         // queue only made the employee doubt it was working and hunt for
@@ -734,8 +746,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               '${since != null ? ' · since ${_time(since)}' : ''}',
               style: const TextStyle(fontSize: 13),
             ),
-            const SizedBox(height: 10),
-            if (!hasReason && eventId != null)
+            // Reasons switched off: the banner only reports where they are.
+            if (_askReason) const SizedBox(height: 10),
+            if (!_askReason)
+              const SizedBox.shrink()
+            else if (!hasReason && eventId != null)
               FilledButton.icon(
                 style: FilledButton.styleFrom(
                   backgroundColor: AppTheme.bad,
@@ -808,7 +823,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // The wait is real — the server needs a couple of confirming fixes before
             // the departure exists to attach a reason to. Say so, and stop implying it
             // is imminent once it clearly is not, rather than spinning indefinitely.
-            if (_liveFenceWaited < 25)
+            // With reasons switched off there is nothing to wait for.
+            if (!_askReason)
+              const SizedBox.shrink()
+            else if (_liveFenceWaited < 25)
               const Row(
                 children: [
                   SizedBox(

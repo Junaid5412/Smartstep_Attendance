@@ -110,7 +110,8 @@ class _ConsentScreenState extends State<ConsentScreen> {
                       Icons.map_outlined,
                       'Your employer can see your route during working hours',
                       'Including whether you left your assigned work area, for how long, and '
-                          'how far. You will be asked to give a reason when that happens.',
+                          'how far.'
+                          '${widget.session.askOutsideReason ? ' You will be asked to give a reason when that happens.' : ''}',
                     ),
                     _point(
                       Icons.phonelink_lock,

@@ -2080,13 +2080,21 @@ class TrackingService : Service() {
             Notification.Builder(this).setPriority(Notification.PRIORITY_DEFAULT)
         }
 
+        // With reasons switched off in Settings the notice only informs.
+        val askReason = Prefs.askOutsideReason(this)
         builder
             .setContentTitle("You have left your work area")
-            .setContentText("$distanceM m outside $areaName. Tap to give a reason.")
+            .setContentText(
+                if (askReason) "$distanceM m outside $areaName. Tap to give a reason."
+                else "$distanceM m outside $areaName."
+            )
             .setStyle(
                 Notification.BigTextStyle().bigText(
-                    "You are $distanceM m outside $areaName. Tap to record why — " +
-                        "this time is not counted as worked hours until it is approved."
+                    if (askReason)
+                        "You are $distanceM m outside $areaName. Tap to record why — " +
+                            "this time is not counted as worked hours until it is approved."
+                    else
+                        "You are $distanceM m outside $areaName. Please return to your work area."
                 )
             )
             .setSmallIcon(android.R.drawable.ic_dialog_alert)

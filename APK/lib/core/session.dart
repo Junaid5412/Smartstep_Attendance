@@ -199,6 +199,25 @@ class Session extends ChangeNotifier {
   bool get trackingActiveNow =>
       (_config['today'] as Map?)?['tracking_active_now'] == true;
 
+  /// Whether the admin wants a reason for leaving the work area. Defaults to true, the
+  /// behaviour before the setting existed and what an older server implies.
+  bool get askOutsideReason =>
+      (_config['settings'] as Map?)?['ask_outside_reason'] != false;
+
+  /// Record the setting as /me reported it, and hand it to the tracking service only
+  /// when it changed, so its leaving-area notice stops (or starts) asking for a reason.
+  Future<void> setAskOutsideReason(bool ask) async {
+    if (askOutsideReason == ask) return;
+    final settings = Map<String, dynamic>.from((_config['settings'] as Map?) ?? {});
+    settings['ask_outside_reason'] = ask;
+    _config = {..._config, 'settings': settings};
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kConfig, jsonEncode(_config));
+    await _pushToNative();
+    notifyListeners();
+  }
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
 

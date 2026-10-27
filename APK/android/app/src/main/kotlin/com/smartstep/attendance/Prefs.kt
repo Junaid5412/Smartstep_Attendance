@@ -267,6 +267,16 @@ object Prefs {
         return settings.optBoolean("allow_screen_capture", false)
     }
 
+    /**
+     * Whether the admin wants a reason for leaving the work area. Off, the leaving-area
+     * notice only informs instead of asking. Defaults to true, the behaviour before the
+     * setting existed.
+     */
+    fun askOutsideReason(context: Context): Boolean {
+        val settings = config(context).optJSONObject("settings") ?: return true
+        return settings.optBoolean("ask_outside_reason", true)
+    }
+
     fun alertSound(context: Context): Boolean {
         // Disabled: no alarm sound or ringtune when outside the area
         return false
