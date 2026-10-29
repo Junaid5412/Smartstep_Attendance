@@ -44,14 +44,10 @@ import UserNotifications
         
         eventChannel = FlutterEventChannel(name: "com.smartstep.attendance/events",
                                            binaryMessenger: controller.binaryMessenger)
-        eventChannel?.setStreamHandler(EventStreamHandler(onListen: { [weak self] (sink: @escaping FlutterEventSink) in
-            // `sink` is a non-escaping closure parameter by default inside this literal;
-            // it must be marked @escaping here because it is stored into `eventSink`
-            // below, a property that outlives this call.
-            self?.eventSink = sink
-        }, onCancel: { [weak self] in
-            self?.eventSink = nil
-        }))
+        // AppDelegate is itself the stream handler (see the FlutterStreamHandler
+        // extension below). Its onListen receives `events` as @escaping, so storing it
+        // into eventSink is legal without any closure-escaping gymnastics.
+        eventChannel?.setStreamHandler(self)
         
         setupLocationManager()
         setupNotifications()
@@ -337,22 +333,18 @@ import UserNotifications
     }
 }
 
-class EventStreamHandler: NSObject, FlutterStreamHandler {
-    private var onListen: (FlutterEventSink) -> Void
-    private var onCancel: () -> Void
-    
-    init(onListen: @escaping (FlutterEventSink) -> Void, onCancel: @escaping () -> Void) {
-        self.onListen = onListen
-        self.onCancel = onCancel
-    }
-    
+// The event channel's stream handler. Implemented on AppDelegate itself rather than a
+// wrapper object: the protocol's onListen hands us `events` as @escaping, so storing it
+// into `eventSink` is legal here, which is what the old wrapper tried (and failed) to do
+// by passing a non-escaping sink through a stored closure.
+extension AppDelegate: FlutterStreamHandler {
     func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
-        onListen(events)
+        self.eventSink = events
         return nil
     }
-    
+
     func onCancel(withArguments arguments: Any?) -> FlutterError? {
-        onCancel()
+        self.eventSink = nil
         return nil
     }
 }
