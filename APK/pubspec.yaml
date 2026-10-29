@@ -3,7 +3,7 @@ description: SST Attendance — geofenced check-in/out with photo verification a
 publish_to: none
 
 # The build number is what the server's min_app_version gate compares against.
-version: 1.0.5+6
+version: 1.0.6+7
 
 environment:
   sdk: ">=3.6.0 <4.0.0"

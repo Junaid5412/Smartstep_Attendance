@@ -44,7 +44,10 @@ import UserNotifications
         
         eventChannel = FlutterEventChannel(name: "com.smartstep.attendance/events",
                                            binaryMessenger: controller.binaryMessenger)
-        eventChannel?.setStreamHandler(EventStreamHandler(onListen: { [weak self] sink in
+        eventChannel?.setStreamHandler(EventStreamHandler(onListen: { [weak self] (sink: @escaping FlutterEventSink) in
+            // `sink` is a non-escaping closure parameter by default inside this literal;
+            // it must be marked @escaping here because it is stored into `eventSink`
+            // below, a property that outlives this call.
             self?.eventSink = sink
         }, onCancel: { [weak self] in
             self?.eventSink = nil

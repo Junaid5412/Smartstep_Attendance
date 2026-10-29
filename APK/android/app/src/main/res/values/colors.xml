@@ -3,4 +3,6 @@
     <!-- Brand blue, matching AppTheme.brand on the Dart side. -->
     <color name="brand">#1F4FD8</color>
     <color name="brand_dark">#163BA6</color>
+    <!-- The Play Store icon's blue: the launcher icon background and the system splash. -->
+    <color name="ic_launcher_background">#033F71</color>
 </resources>
