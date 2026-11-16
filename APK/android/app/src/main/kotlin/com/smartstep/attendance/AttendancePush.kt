@@ -235,25 +235,44 @@ object AttendancePush {
         lastVpn = vpn
         val status = status(ctx)
         if (status.isNotEmpty()) payload.put("push_status", status)
+        val last = prefs(ctx).getString("last_push", null)
+        if (last != null) {
+            payload.put("push_last", last)
+            payload.put("push_last_at", prefs(ctx).getLong("last_push_at", 0L) / 1000)
+        }
         val t = tokenToReport(ctx)
         if (t != null) payload.put("fcm_token", t)
         return t
     }
 
-    /** Tracking was stopped and the server wants it back: start the service (it checks for itself that a shift is open). */
-    fun wake(ctx: Context, pollNow: Boolean) {
-        if (Prefs.token(ctx) == null || !Prefs.trackingWanted(ctx) || !Prefs.shiftOpen(ctx)) {
-            Log.i(TAG, "Wake ignored: not signed in / not checked in")
-            return
-        }
-        try {
+    /**
+     * Tracking was stopped and the server wants it back: start the service (it checks for itself that a shift is
+     * open). Returns what happened, which is sent back to the server as the push receipt.
+     */
+    fun wake(ctx: Context, pollNow: Boolean): String {
+        if (Prefs.token(ctx) == null) return "ignored: not signed in"
+        if (!Prefs.trackingWanted(ctx) || !Prefs.shiftOpen(ctx)) return "ignored: not checked in (nothing to restart)"
+        return try {
             TrackingService.start(ctx, pollNow)
+            "tracking started"
         } catch (e: Exception) {
             // Android refused to start it from the background (should not happen for a high-priority push): ask the
             // person to open the app instead.
             Log.w(TAG, "Could not restart tracking: ${e.message}")
             show(ctx, 7301, "Attendance tracking stopped", "Tap to open SST Attendance and continue your shift.")
+            "could not start tracking: ${e.javaClass.simpleName}: ${e.message}"
         }
+    }
+
+    /** Remember that a push arrived (and what was done) and tell the server at once: the panel shows it as the receipt. */
+    fun received(ctx: Context, type: String, sentAt: String?, outcome: String, wasRunning: Boolean) {
+        val now = System.currentTimeMillis()
+        val sent = sentAt?.toLongOrNull()
+        val delay = if (sent != null) " after ${((now / 1000) - sent).coerceAtLeast(0)} s" else ""
+        val running = if (wasRunning) "tracking was running" else "tracking was not running"
+        val text = "$type: $outcome ($running, arrived$delay)"
+        prefs(ctx).edit().putString("last_push", text.take(180)).putLong("last_push_at", now).apply()
+        sync(ctx, force = true)
     }
 
     fun show(ctx: Context, id: Int, title: String, body: String) {
@@ -297,11 +316,29 @@ class AttendancePushService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val d = message.data
-        when (d["type"]) {
-            "wake" -> AttendancePush.wake(this, pollNow = true)
-            "locate" -> AttendancePush.wake(this, pollNow = true)
-            "notify" -> AttendancePush.show(this, (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
-                d["title"] ?: "SST Attendance", d["body"] ?: "")
+        val type = d["type"] ?: "?"
+        val wasRunning = TrackingService.isRunning
+        val outcome = try {
+            when (type) {
+                "wake", "locate" -> AttendancePush.wake(this, pollNow = true)
+                "notify" -> {
+                    AttendancePush.show(this, (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
+                        d["title"] ?: "SST Attendance", d["body"] ?: "")
+                    "message shown"
+                }
+                else -> "unknown type"
+            }
+        } catch (e: Exception) {
+            "error: ${e.javaClass.simpleName}: ${e.message}"
+        }
+        // A test from the panel always shows something, so it is visible on the phone that the push arrived.
+        if (d["test"] == "1" && type != "notify") {
+            AttendancePush.show(this, 7302, "Wake-up test received", outcome)
+        }
+        try {
+            AttendancePush.received(this, type, d["sent_at"], outcome, wasRunning)
+        } catch (e: Exception) {
+            // the receipt is best effort
         }
     }
 
