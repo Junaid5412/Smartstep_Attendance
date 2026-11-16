@@ -31,6 +31,8 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Wake-up push: register (token, VPN, status) whenever the app is opened, not only during a shift.
+        AttendancePush.sync(this)
         // Re-applied on every return to the foreground, so a change made in the panel
         // takes effect once the phone has refreshed its config — without this the app
         // would have to be force-stopped for the setting to bite.

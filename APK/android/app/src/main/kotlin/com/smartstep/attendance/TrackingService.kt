@@ -503,6 +503,7 @@ class TrackingService : Service() {
         queue = LocationQueue(this)
         createChannel()
         createAlertChannel()
+        AttendancePush.watchVpn(this)
 
         val filter = IntentFilter(Intent.ACTION_USER_PRESENT)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -2440,6 +2441,7 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
+        AttendancePush.unwatchVpn(this)
         stopMotionSensors()
         outsideFirstSeenAt = 0L
         outsideCandidateCount = 0

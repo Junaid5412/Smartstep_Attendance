@@ -7,8 +7,12 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -49,8 +53,22 @@ object AttendancePush {
                 .putString("sender_id", cfg.optString("sender_id"))
         }
         p.apply()
-        if (enabled && ensureApp(ctx) && token(ctx) == null) requestToken(ctx)
+        if (!enabled) { setStatus(ctx, "off"); return }
+        if (!ensureApp(ctx)) return                       // ensureApp keeps the reason
+        if (token(ctx) == null) {
+            setStatus(ctx, "waiting for token")
+            requestToken(ctx)
+        } else {
+            setStatus(ctx, "ok")
+        }
     }
+
+    /** What the panel shows when this phone has no push token: off / waiting / the Firebase error. */
+    private fun setStatus(ctx: Context, s: String) {
+        prefs(ctx).edit().putString("status", s.take(180)).apply()
+    }
+
+    fun status(ctx: Context): String = prefs(ctx).getString("status", "") ?: ""
 
     /** Start Firebase from the remembered values. False when push is off or never set up. */
     fun ensureApp(ctx: Context): Boolean {
@@ -61,7 +79,10 @@ object AttendancePush {
         val apiKey = p.getString("api_key", "") ?: ""
         val projectId = p.getString("project_id", "") ?: ""
         val senderId = p.getString("sender_id", "") ?: ""
-        if (appId.isEmpty() || apiKey.isEmpty() || projectId.isEmpty() || senderId.isEmpty()) return false
+        if (appId.isEmpty() || apiKey.isEmpty() || projectId.isEmpty() || senderId.isEmpty()) {
+            setStatus(app, "firebase values missing")
+            return false
+        }
         return try {
             val running = FirebaseApp.getApps(app).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
             if (running != null) {
@@ -75,22 +96,111 @@ object AttendancePush {
             true
         } catch (e: Exception) {
             Log.w(TAG, "Firebase could not start: ${e.message}")
+            setStatus(app, "firebase error: ${e.javaClass.simpleName}: ${e.message}")
             false
         }
     }
 
+    @Volatile private var lastTokenTry = 0L
+
     private fun requestToken(ctx: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastTokenTry < 60_000L) return
+        lastTokenTry = now
         try {
-            FirebaseMessaging.getInstance().token.addOnSuccessListener { t ->
-                if (!t.isNullOrEmpty()) saveToken(ctx, t)
-            }
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { t ->
+                    if (!t.isNullOrEmpty()) {
+                        saveToken(ctx, t)
+                        setStatus(ctx, "ok")
+                        sync(ctx, force = true)           // tell the server now, not on the next poll
+                    } else {
+                        setStatus(ctx, "token error: empty token")
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "No FCM token: ${e.message}")
+                    val cause = e.cause?.message
+                    setStatus(ctx, "token error: ${e.message}" + (if (cause != null && cause != e.message) " ($cause)" else ""))
+                    sync(ctx, force = true)
+                }
         } catch (e: Exception) {
             Log.w(TAG, "No FCM token: ${e.message}")
+            setStatus(ctx, "token error: ${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
     fun saveToken(ctx: Context, token: String) {
         prefs(ctx).edit().putString("token", token).apply()
+    }
+
+    @Volatile private var lastSync = 0L
+
+    /**
+     * Report token / VPN / push status and fetch the Firebase settings outside the tracking poll: when the app is
+     * opened (so a phone registers without waiting for a shift), when a token arrives, and when a VPN goes on or off.
+     */
+    fun sync(ctx: Context, force: Boolean = false) {
+        val app = ctx.applicationContext
+        if (Prefs.token(app) == null) return
+        val now = System.currentTimeMillis()
+        if (!force && now - lastSync < 30_000L) return
+        lastSync = now
+        Thread {
+            try {
+                val payload = JSONObject()
+                val reporting = addReport(app, payload)
+                val response = ApiClient.post(app, "push", payload)
+                val data = response.body?.optJSONObject("data") ?: return@Thread
+                if (reporting != null) markReported(app, reporting)
+                applyConfig(app, data.optJSONObject("push"))
+            } catch (e: Exception) {
+                Log.w(TAG, "Push sync failed: ${e.message}")
+            }
+        }.start()
+    }
+
+    private val main by lazy { Handler(Looper.getMainLooper()) }
+    private var vpnCallback: ConnectivityManager.NetworkCallback? = null
+    @Volatile private var lastVpn: Boolean? = null
+
+    /** While tracking runs: report a VPN going on or off within seconds instead of on the next poll. */
+    fun watchVpn(ctx: Context) {
+        if (vpnCallback != null) return
+        val app = ctx.applicationContext
+        val changed = Runnable {
+            val on = vpnActive(app)
+            if (on != lastVpn) {
+                lastVpn = on
+                sync(app, force = true)
+            }
+        }
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { main.removeCallbacks(changed); main.postDelayed(changed, 1500) }
+            override fun onLost(network: Network) { main.removeCallbacks(changed); main.postDelayed(changed, 1500) }
+        }
+        try {
+            val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val request = NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .build()
+            cm.registerNetworkCallback(request, cb)
+            vpnCallback = cb
+            lastVpn = vpnActive(app)
+        } catch (e: Exception) {
+            Log.w(TAG, "VPN watch not available: ${e.message}")
+        }
+    }
+
+    fun unwatchVpn(ctx: Context) {
+        val cb = vpnCallback ?: return
+        vpnCallback = null
+        try {
+            (ctx.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(cb)
+        } catch (e: Exception) {
+            // already gone
+        }
     }
 
     fun token(ctx: Context): String? = prefs(ctx).getString("token", null)
@@ -120,7 +230,11 @@ object AttendancePush {
 
     /** Fields for a poll / heartbeat payload: the VPN state, and the FCM token when the server does not have it yet. */
     fun addReport(ctx: Context, payload: JSONObject): String? {
-        payload.put("vpn", vpnActive(ctx))
+        val vpn = vpnActive(ctx)
+        payload.put("vpn", vpn)
+        lastVpn = vpn
+        val status = status(ctx)
+        if (status.isNotEmpty()) payload.put("push_status", status)
         val t = tokenToReport(ctx)
         if (t != null) payload.put("fcm_token", t)
         return t
