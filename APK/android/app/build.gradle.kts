@@ -105,4 +105,9 @@ dependencies {
     // either way. Declared explicitly because a transitive dependency of another
     // module is not on this module's compile classpath.
     implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // Wake-up push (AttendancePush.kt): Google FCM only - no analytics, and no google-services plugin; the Firebase
+    // values come from the attendance server.
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

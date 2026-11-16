@@ -40,6 +40,15 @@ class Native {
     });
   }
 
+  /// Is a VPN on right now? Sent with check-in / check-out. Android only: anything else (iOS, an error) is "unknown".
+  static Future<bool?> vpnActive() async {
+    try {
+      return await _channel.invokeMethod<bool>('vpnActive');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// The persistent device fingerprint used for the one-device binding.
   static Future<String?> deviceUid() async {
     try {

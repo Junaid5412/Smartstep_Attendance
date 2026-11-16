@@ -90,6 +90,20 @@
             </intent-filter>
         </receiver>
 
+        <!-- Wake-up push (AttendancePush.kt): Google FCM delivers here even when the app is not running, and it
+             starts tracking again. Not exported: only Google Play services on this phone delivers to it. -->
+        <service
+            android:name=".AttendancePushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!-- Firebase is started with values from the attendance server (no google-services.json) and only does
+             messaging: no analytics, no advertising ID. -->
+        <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
+        <meta-data android:name="google_analytics_adid_collection_enabled" android:value="false" />
+
         <!-- Receives activity transitions (STILL / walking / in vehicle). Not exported: only
              Play Services delivers to it, via a PendingIntent this app created. -->
         <receiver

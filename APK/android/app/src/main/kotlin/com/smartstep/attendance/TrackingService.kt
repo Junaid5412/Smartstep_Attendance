@@ -63,6 +63,8 @@ class TrackingService : Service() {
         const val ACTION_START = "com.smartstep.attendance.START"
         const val ACTION_STOP = "com.smartstep.attendance.STOP"
         const val ACTION_SYNC_NOW = "com.smartstep.attendance.SYNC_NOW"
+        /** Extra on a start: poll the server at once (a wake-up push or "locate now" started the service). */
+        const val EXTRA_POLL_NOW = "poll_now"
 
         /** Broadcast the UI listens to so it can show live status. */
         const val BROADCAST_STATUS = "com.smartstep.attendance.STATUS"
@@ -172,8 +174,9 @@ class TrackingService : Service() {
         @Volatile var isRunning: Boolean = false
             private set
 
-        fun start(context: Context) {
+        fun start(context: Context, pollNow: Boolean = false) {
             val intent = Intent(context, TrackingService::class.java).setAction(ACTION_START)
+                .putExtra(EXTRA_POLL_NOW, pollNow)
             // startForegroundService is mandatory from Oreo, and the service then has
             // a few seconds to call startForeground() or the system kills it.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -618,6 +621,7 @@ class TrackingService : Service() {
             // A check-in or check-out changes whether watching applies at all.
             syncWatchState()
             refreshNotification()
+            if (intent?.getBooleanExtra(EXTRA_POLL_NOW, false) == true) pollOnce()
             return START_STICKY
         }
 
@@ -628,6 +632,8 @@ class TrackingService : Service() {
         startTicking()
         startPolling()
         startWatching()
+        // Started by a wake-up push: tell the server at once that tracking is back (and pick up a "locate").
+        if (intent?.getBooleanExtra(EXTRA_POLL_NOW, false) == true) pollOnce()
         // START_STICKY asks Android to recreate the service if it is killed for
         // memory; combined with the boot receiver this is what makes tracking
         // survive the phone doing its worst.
@@ -1595,8 +1601,10 @@ class TrackingService : Service() {
             .put("battery", batteryPercent())
             .put("is_charging", isCharging())
             .put("tracking_running", true)
+        val reporting = AttendancePush.addReport(this, payload)
 
         val response = ApiClient.post(this, "heartbeat", payload)
+        if (reporting != null && response.code in 200..299) AttendancePush.markReported(this, reporting)
         if (response.sessionDead) {
             Prefs.setTrackingWanted(this, false)
             Prefs.setToken(this, null)
@@ -2207,31 +2215,41 @@ class TrackingService : Service() {
         val runnable = object : Runnable {
             override fun run() {
                 if (!isRunning) return
-
-                Thread {
-                    val response = ApiClient.post(this@TrackingService, "poll", JSONObject())
-
-                    if (response.sessionDead) {
-                        Prefs.setTrackingWanted(this@TrackingService, false)
-                        Prefs.setToken(this@TrackingService, null)
-                        handler.post { shutdown() }
-                        return@Thread
-                    }
-
-                    val data = response.body?.optJSONObject("data")
-                    if (data != null) {
-                        pollSeconds = data.optInt("poll_seconds", pollSeconds).coerceIn(15, 600)
-                        applyLiveWindow(data)
-                        handleCommands(data.optJSONArray("commands"))
-                    }
-                }.start()
-
+                pollOnce()
                 handler.postDelayed(this, pollSeconds * 1000L)
             }
         }
 
         pollRunnable = runnable
         handler.postDelayed(runnable, pollSeconds * 1000L)
+    }
+
+    /**
+     * One poll: carries the VPN state and (once) the push token; brings back commands, the live window and the
+     * Firebase settings for the wake-up push.
+     */
+    private fun pollOnce() {
+        Thread {
+            val payload = JSONObject()
+            val reporting = AttendancePush.addReport(this@TrackingService, payload)
+            val response = ApiClient.post(this@TrackingService, "poll", payload)
+
+            if (response.sessionDead) {
+                Prefs.setTrackingWanted(this@TrackingService, false)
+                Prefs.setToken(this@TrackingService, null)
+                handler.post { shutdown() }
+                return@Thread
+            }
+
+            val data = response.body?.optJSONObject("data")
+            if (data != null) {
+                if (reporting != null) AttendancePush.markReported(this@TrackingService, reporting)
+                pollSeconds = data.optInt("poll_seconds", pollSeconds).coerceIn(15, 600)
+                applyLiveWindow(data)
+                handleCommands(data.optJSONArray("commands"))
+                AttendancePush.applyConfig(this@TrackingService, data.optJSONObject("push"))
+            }
+        }.start()
     }
 
     /**

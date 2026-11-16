@@ -97,6 +97,8 @@ class MainActivity : FlutterActivity() {
                     /* ---------- device identity ---------- */
 
                     "deviceUid" -> result.success(DeviceIdentity.uid(this))
+                    // Is a VPN on right now? Sent with check-in / check-out (the panel may refuse it).
+                    "vpnActive" -> result.success(AttendancePush.vpnActive(this))
 
                     "deviceInfo" -> result.success(DeviceIdentity.describe())
 

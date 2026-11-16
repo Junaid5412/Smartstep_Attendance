@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/api.dart';
 import '../core/location.dart';
+import '../core/native.dart';
 import '../core/offline_map.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -298,6 +299,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
       _error = null;
     });
 
+    // Reported to the server (shown on the panel; refused there while on, if the admin chose that).
+    final vpn = await Native.vpnActive();
+
     final result = await widget.api.postMultipart(
       widget.checkingOut ? 'check-out' : 'check-in',
       {
@@ -305,6 +309,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         'lng': position.longitude.toString(),
         'accuracy': position.accuracy.toString(),
         'is_mock': position.isMocked.toString(),
+        if (vpn != null) 'vpn': vpn.toString(),
       },
       photo: _photo,
     );
